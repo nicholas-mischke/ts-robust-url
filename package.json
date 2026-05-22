@@ -1,0 +1,21 @@
+{
+  "name": "rboust-url",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "description": "chat bot add this",
+  "scripts": {
+    "build": "tsc --watch",
+    "test": "vitest run --config tests/vitest.config.ts"
+  },
+  "dependencies": {
+    "ipaddr.js": "^2.4.0",
+    "lodash-es": "^4.18.1",
+    "normalize-url": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}
