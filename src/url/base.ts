@@ -1,18 +1,11 @@
 // local
 import isPlainObject from "lodash-es/isPlainObject";
 import { bracketIPv6, isIPv4, isIPv6 } from "../ip";
-import {
-  filePathToURL,
-  isFilePath,
-  isFileURL,
-  urlToFilePath,
-} from "../path/filepath";
+import { filePathToURL, urlToFilePath } from "../path/filepath";
 import { path } from "../path/utils";
 import { type EqualityOptions, urlsAreEqual } from "./utils/equality";
 import { type NormalizeOptions, normalizeURL } from "./utils/normalize";
-import { isURL, normalizeProtocol } from "./utils/utils";
-import typeDetect from "type-detect";
-import { inspect } from "loupe";
+import { normalizeProtocol } from "./utils/utils";
 
 /**
  * Constructor options shared by the Node and browser RobustURL builds.
@@ -22,82 +15,13 @@ import { inspect } from "loupe";
  * tells the concrete constructor to accept a caller-asserted path without a
  * filesystem existence check.
  */
-export type Options = {
-  filePath?: boolean;
-  missingOk?: boolean;
-};
-
-/**
- * Canonical constructor mode returned by `parseOptions`.
- *
- * `null` means auto-detect. A non-null value pins interpretation to either
- * file-path mode or URL-only mode, with `missingOk` resolved to an explicit
- * boolean for constructors that perform filesystem checks.
- */
-export type ParsedOptions = {
-  filePath: boolean;
-  missingOk?: boolean;
-} | null;
-
-/**
- * Parses caller-facing constructor options into a single constructor mode.
- *
- * Accepted inputs are `undefined`, `null`, an empty plain object, or a plain
- * object containing `filePath` and optionally `missingOk`. `missingOk` is only
- * meaningful with `filePath: true`; all other combinations are rejected.
- *
- * @throws {TypeError} When the options value is not a plain object, contains
- * non-boolean option values, or uses `missingOk` outside file-path mode.
- */
-export const parseOptions = (opts: unknown): ParsedOptions => {
-  // Not provided: auto-detect.
-  if (opts === undefined || opts === null) return null;
-
-  if (!isPlainObject(opts)) {
-    throw new TypeError(
-      `expected undefined or plain object. Got: '${inspect(opts)}' of type: '${typeDetect(opts)}'.`,
-    );
-  }
-
-  // Empty plain object also means auto-detect.
-  if (Object.keys(opts).length === 0) return null;
-
-  const o = opts as Record<string, unknown>;
-  const { filePath, missingOk } = o as Options;
-
-  // Both flags omitted: auto-detect. `{}` is identical to `undefined`.
-  if (filePath === undefined && missingOk === undefined) return null;
-
-  // missingOk only carries meaning alongside filePath: true. Reject any
-  // other combination so the option's intent stays unambiguous.
-  if (missingOk !== undefined && filePath !== true) {
-    throw new TypeError(
-      `missingOk is only valid with filePath: true. Got: '${inspect(opts)}'.`,
-    );
-  }
-
-  if (filePath !== undefined && typeof filePath !== "boolean") {
-    throw new TypeError(
-      `expected filePath to be a boolean. Got: '${inspect(filePath)}' of type: '${typeDetect(filePath)}'.`,
-    );
-  }
-
-  if (missingOk !== undefined && typeof missingOk !== "boolean") {
-    throw new TypeError(
-      `expected missingOk to be a boolean. Got: '${inspect(missingOk)}' of type: '${typeDetect(missingOk)}'.`,
-    );
-  }
-
-  // filePath: false: URL-only, no auto-detect fallback. missingOk is
-  // irrelevant here (the case above already rejected it being set).
-  if (filePath === false) {
-    return { filePath: false, missingOk: false };
-  }
-
-  // filePath: true: caller asserts a path. Default missingOk to false
-  // (must exist) unless the caller explicitly opted out.
-  return { filePath: true, missingOk: missingOk === true };
-};
+export type Options =
+  | undefined
+  | null
+  | {
+      filePath?: boolean;
+      missingOk?: boolean;
+    };
 
 /**
  * Environment-agnostic core of RobustURL. Extends the WHATWG `URL` class and
@@ -119,7 +43,7 @@ export const parseOptions = (opts: unknown): ParsedOptions => {
  */
 export class RobustURL extends URL {
   declare protected _ip: string | null;
-  declare protected _fileOpts: ParsedOptions;
+  declare protected _opts: Options;
 
   /**
    * Build a minimal RobustURL from protocol, host, port, and userinfo parts.
@@ -232,64 +156,93 @@ export class RobustURL extends URL {
   /**
    * Parses constructor arguments shared by the Node and browser builds.
    *
-   * The result contains the WHATWG URL parse result when available, the parsed
-   * IP hostname for IPv4/IPv6 inputs, the absolute path interpretation of the
-   * first argument, and canonical constructor options. Concrete constructors
-   * use these fields to decide whether to accept a URL, convert a file path, or
-   * reject the input for their environment.
+   * Returns the WHATWG `URL` parse of the args, the IP host (if any), the
+   * absolute file-path interpretation of the same args, the corresponding
+   * `file:` URL (if the path is well-formed), and the caller's options bag.
+   * Concrete constructors decide which of `webURL`/`fileURL` to honor based on
+   * `opts` and on whether they can verify the file exists on disk.
    *
-   * A trailing plain object is always treated as options. Remaining positional
-   * arguments must be URL constructor arguments. If URL parsing fails, only a
-   * single positional argument is valid because base resolution no longer has a
-   * URL to resolve against.
-   *
-   * @throws {TypeError} When options are invalid or URL parsing fails with more
-   * than one positional argument.
+   * Argument handling:
+   * - A trailing plain object — or an explicit `null` — is consumed as the
+   *   options bag. `undefined` is dropped.
+   * - The remaining positional arguments are passed to `new URL(url, base?)`.
+   *   File-path interpretation uses the same positional pair, with base
+   *   trailing-separator semantics chosen to mirror WHATWG URL relative
+   *   resolution: `("user", "/dir/")` joins to `/dir/user`, `("user", "/dir")`
+   *   resolves against the parent directory, and an absolute `url` wins.
+   * - `opts` is returned untouched; option-shape validation belongs to the
+   *   concrete constructor that interprets it.
    */
   static _constructorArgParser(
     url: string | URL,
     base?: string | URL | Options,
     options?: Options,
-  ) {
-    const args = [url, base, options].filter((arg) => arg !== undefined);
+  ): {
+    webURL: URL | null;
+    ip: string | null;
+    absoluteFilePath: string | null;
+    fileURL: URL | null;
+    opts: Options;
+  } {
+    const positional: Array<string | URL | Options> = [
+      url,
+      base,
+      options,
+    ].filter((arg) => arg !== undefined) as Array<string | URL | Options>;
 
-    // Pop the optional trailing options bag.
-    let _opts = parseOptions(undefined);
-    if (isPlainObject(args[args.length - 1])) {
-      _opts = parseOptions(args.pop());
+    // Trailing plain object or explicit null is the options bag.
+    let opts: Options = null;
+    const last = positional[positional.length - 1];
+    if (last === null || isPlainObject(last)) {
+      opts = positional.pop() as Options;
     }
 
-    // Anything still in args must be string | URL.
-    let _url;
+    const [urlArg, baseArg] = positional as [string | URL, (string | URL)?];
+
+    let webURL: URL | null = null;
     try {
-      _url = new URL(...(args as [string | URL, (string | URL)?]));
-    } catch (e) {
-      _url = null;
+      webURL =
+        baseArg === undefined ? new URL(urlArg) : new URL(urlArg, baseArg);
+    } catch {
+      webURL = null;
     }
 
-    // If a url was passed explicitly, we can use it to determine the ip address.
-    // host is ip:port or null
-    // hostname is domain name or null
-    let _ip;
-    if (_url) {
-      if (isIPv4(_url.hostname)) {
-        _ip = _url.hostname;
-      } else if (isIPv6(_url.hostname)) {
-        _ip = bracketIPv6(_url.hostname);
+    let ip: string | null = null;
+    if (webURL) {
+      if (isIPv4(webURL.hostname)) {
+        ip = webURL.hostname;
+      } else if (isIPv6(webURL.hostname)) {
+        ip = bracketIPv6(webURL.hostname);
       }
     }
 
-    // Without a parsed URL, only a single file-path candidate can remain.
-    if (!_url && args.length !== 1) {
-      throw new TypeError(
-        "Invalid arguments: when URL construction fails, expected exactly one argument (the URL string or file path).",
-      );
+    // File-path interpretation mirrors URL relative-resolution:
+    // - No base: resolve url alone against cwd.
+    // - Base ends in a separator: resolve url against that directory.
+    // - Base lacks trailing separator: resolve url against base's parent
+    //   directory (so `("user", "/page")` -> `/user`, like WHATWG URL).
+    // - Absolute `url` wins over `base` regardless of trailing slash.
+    let absoluteFilePath: string | null = null;
+    if (urlArg !== undefined) {
+      if (baseArg === undefined) {
+        absoluteFilePath = path.resolve(String(urlArg));
+      } else {
+        const baseStr = String(baseArg);
+        const baseDir = /[\\/]$/.test(baseStr) ? baseStr : path.dirname(baseStr);
+        absoluteFilePath = path.resolve(baseDir, String(urlArg));
+      }
     }
 
-    // Resolve the path interpretation without touching the filesystem.
-    const _absoluteFilePath = path.resolve(String(args[0]));
+    let fileURL: URL | null = null;
+    if (absoluteFilePath) {
+      try {
+        fileURL = filePathToURL(absoluteFilePath);
+      } catch {
+        fileURL = null;
+      }
+    }
 
-    return { _url, _ip, _absoluteFilePath, _opts };
+    return { webURL, ip, absoluteFilePath, fileURL, opts };
   }
 
   /**

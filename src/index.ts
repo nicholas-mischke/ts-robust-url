@@ -1,6 +1,6 @@
 // Environment-aware: package.json "browser" swaps dist/url/index.js → dist/url/browser.js
 export { RobustURL } from "./url";
-export { parseOptions, type Options, type ParsedOptions } from "./url/base";
+export { type Options } from "./url/base";
 
 // Node-only
 export { fileExists } from "./url/node";

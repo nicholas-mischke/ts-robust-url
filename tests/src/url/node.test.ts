@@ -1,70 +1,129 @@
-// built-in
-import path from "node:path";
-
 // 3rd
 import { describe, expect, it, vi } from "vitest";
+
+// Mock `node:fs` so the literal `/fixtures/exists.txt` path used in the
+// docstring examples reports as an existing file, and everything else does
+// not. The hoist in vitest moves vi.mock above the local imports below.
+vi.mock("node:fs", () => {
+  const EXISTING = "/fixtures/exists.txt";
+  return {
+    default: {
+      existsSync: (p: string) => p === EXISTING,
+      statSync: (p: string) => ({
+        isFile: () => p === EXISTING,
+      }),
+    },
+  };
+});
 
 // local
 import { RobustURL } from "@src/url/node";
 
-const FIXTURE = path.resolve("tests/src/url/fixtures/file.txt");
-const FIXTURE_URL = new URL(`file://${FIXTURE}`).href;
-
-const MISSING = path.resolve("tests/src/url/fixtures/does-not-exist.txt");
-const MISSING_URL = new URL(`file://${MISSING}`).href;
+const EXISTS_PATH = "/fixtures/exists.txt";
+const EXISTS_URL = "file:///fixtures/exists.txt";
+const MISSING_PATH = "/fixtures/does-not-exists.txt";
+const MISSING_URL = "file:///fixtures/does-not-exists.txt";
+const CON_PATH = "/fixtures/CON.txt";
+const CON_URL = "file:///fixtures/CON.txt";
+const WEB_URL = "https://example.com";
+const WEB_URL_HREF = "https://example.com/";
 
 describe("RobustURL (node)", () => {
-  describe("URL inputs", () => {
-    it("accepts a plain URL string", () => {
-      expect(new RobustURL("https://example.com/page").href).toBe(
-        "https://example.com/page",
+  // missingOk is only meaningful with filePath: true. Using it without
+  // filePath: true is rejected up front, before any mode runs.
+  describe("misaligned options", () => {
+    it("throws when missingOk is set without filePath", () => {
+      expect(() => new RobustURL(WEB_URL, { missingOk: true })).toThrow(
+        /missingOk requires filePath: true/,
       );
     });
 
-    it("resolves a relative reference against a base", () => {
-      expect(new RobustURL("page", "https://example.com/").href).toBe(
-        "https://example.com/page",
-      );
-    });
-  });
-
-  describe("auto mode (no options)", () => {
-    it("auto-detects an existing file path and converts to file://", () => {
-      let url = new RobustURL(FIXTURE);
-      expect(url.href).toBe(FIXTURE_URL);
-      expect(url.isFileURL).toBe(true);
-    });
-
-    it("throws when input is neither a URL nor an existing file path", () => {
-      expect(() => new RobustURL(MISSING)).toThrow(
-        /neither a parseable URL nor an existing file path/,
-      );
-    });
-  });
-
-  describe("strict file mode  { filePath: true }", () => {
-    it("accepts an existing file path", () => {
-      expect(new RobustURL(FIXTURE, { filePath: true }).href).toBe(FIXTURE_URL);
-    });
-
-    it("throws when the path does not exist", () => {
-      expect(() => new RobustURL(MISSING, { filePath: true })).toThrow(
-        /file path does not exist on disk/,
-      );
-    });
-  });
-
-  describe("caller-asserted missing path mode  { filePath: true, missingOk: true }", () => {
-    it("accepts a non-existent path", () => {
+    it("throws when missingOk is combined with filePath: false", () => {
       expect(
-        new RobustURL(MISSING, { filePath: true, missingOk: true }).href,
+        () => new RobustURL(WEB_URL, { filePath: false, missingOk: true }),
+      ).toThrow(/missingOk requires filePath: true/);
+    });
+  });
+
+  // Auto: accepts any parseable URL. file: protocol (whether direct input or
+  // path-string fallback) requires the file to exist on disk.
+  describe("auto mode (no filePath option)", () => {
+    it("accepts a webURL", () => {
+      expect(new RobustURL(WEB_URL).href).toBe(WEB_URL_HREF);
+    });
+
+    it("accepts a file: URL when the file exists", () => {
+      expect(new RobustURL(EXISTS_URL).href).toBe(EXISTS_URL);
+    });
+
+    it("accepts a path string when the file exists", () => {
+      expect(new RobustURL(EXISTS_PATH).href).toBe(EXISTS_URL);
+    });
+
+    it("rejects a file: URL when the file does not exist", () => {
+      expect(() => new RobustURL(MISSING_URL)).toThrow(/does not exist/);
+    });
+
+    it("rejects a path string when the file does not exist", () => {
+      expect(() => new RobustURL(MISSING_PATH)).toThrow(
+        /does not exist|neither a parseable URL nor an existing file path/,
+      );
+    });
+  });
+
+  // filePath: true → resolved URL must be file:. Disk check unless caller
+  // asserts source-of-truth with missingOk: true.
+  describe("file-path mode (filePath: true)", () => {
+    it("throws for a web URL (misaligned: not a file URL)", () => {
+      expect(() => new RobustURL(WEB_URL, { filePath: true })).toThrow(
+        /not a file URL/,
+      );
+    });
+
+    it("accepts a file: URL when the file exists", () => {
+      expect(new RobustURL(EXISTS_URL, { filePath: true }).href).toBe(
+        EXISTS_URL,
+      );
+    });
+
+    it("rejects a file: URL when the file does not exist", () => {
+      expect(() => new RobustURL(MISSING_URL, { filePath: true })).toThrow(
+        /does not exist/,
+      );
+    });
+
+    it("accepts a file: URL for a missing file under missingOk: true", () => {
+      expect(
+        new RobustURL(MISSING_URL, { filePath: true, missingOk: true }).href,
       ).toBe(MISSING_URL);
     });
 
-    it("warns but accepts a malformed-looking path", () => {
-      let warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("accepts a path string when the file exists", () => {
+      expect(new RobustURL(EXISTS_PATH, { filePath: true }).href).toBe(
+        EXISTS_URL,
+      );
+    });
+
+    it("rejects a path string when the file does not exist", () => {
+      expect(() => new RobustURL(MISSING_PATH, { filePath: true })).toThrow(
+        /does not exist/,
+      );
+    });
+
+    it("accepts a path string for a missing file under missingOk: true", () => {
+      expect(
+        new RobustURL(MISSING_PATH, { filePath: true, missingOk: true }).href,
+      ).toBe(MISSING_URL);
+    });
+
+    it("warns but accepts a format-invalid path under missingOk: true", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
-        new RobustURL("/tmp/CON.txt", { filePath: true, missingOk: true });
+        const url = new RobustURL(CON_PATH, {
+          filePath: true,
+          missingOk: true,
+        });
+        expect(url.href).toBe(CON_URL);
         expect(warn).toHaveBeenCalledWith(
           expect.stringMatching(/failed format validation/),
         );
@@ -74,22 +133,23 @@ describe("RobustURL (node)", () => {
     });
   });
 
-  describe("no-files mode  { filePath: false }", () => {
-    it("accepts a regular URL", () => {
-      expect(
-        new RobustURL("https://example.com/page", { filePath: false }).href,
-      ).toBe("https://example.com/page");
-    });
-
-    it("rejects a file:// input", () => {
-      expect(() => new RobustURL(FIXTURE_URL, { filePath: false })).toThrow(
-        /filePath: false but input resolved to file URL/,
+  // filePath: false → resolved URL must NOT be file:.
+  describe("URL-only mode (filePath: false)", () => {
+    it("accepts a webURL", () => {
+      expect(new RobustURL(WEB_URL, { filePath: false }).href).toBe(
+        WEB_URL_HREF,
       );
     });
 
-    it("rejects an unparseable input (no path fallback)", () => {
-      expect(() => new RobustURL(MISSING, { filePath: false })).toThrow(
-        /Invalid URL/,
+    it("rejects a file: URL", () => {
+      expect(() => new RobustURL(EXISTS_URL, { filePath: false })).toThrow(
+        /filePath: false but/,
+      );
+    });
+
+    it("rejects a path string", () => {
+      expect(() => new RobustURL(EXISTS_PATH, { filePath: false })).toThrow(
+        /filePath: false but/,
       );
     });
   });

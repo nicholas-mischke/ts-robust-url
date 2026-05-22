@@ -1,27 +1,51 @@
-import {
-  RobustURL as BaseRobustURL,
-  type Options,
-  type ParsedOptions,
-} from "./base";
+import { RobustURL as BaseRobustURL, type Options } from "./base";
 import { isFilePath } from "../path/filepath";
 import { pathToFileURL } from "../path/utils";
 
+type OptsWithFile = { filePath?: boolean; missingOk?: boolean };
+
 export class RobustURL extends BaseRobustURL {
   /**
-   * Construct a RobustURL from a URL, a relative URL plus base, or an asserted
-   * file path.
+   * Construct a RobustURL from a parseable URL or a plain path string.
    *
-   * The browser build cannot inspect the filesystem, so plain path strings are
-   * never auto-detected. Auto mode accepts parseable URLs, including `file:`
-   * URLs, and rejects unparseable strings such as `/tmp/file.txt`. To convert a
-   * path string in the browser build, the caller must pass
-   * `{ filePath: true, missingOk: true }`, which asserts the string is a path
-   * without requiring an existence check.
    *
-   * `{ filePath: true }` and `{ filePath: true, missingOk: false }` are
-   * rejected because they request a disk check the browser cannot perform.
-   * `{ filePath: false }` is URL-only mode; file URLs and unparseable strings
-   * are rejected.
+   * Auto mode:
+   *   Accepts parseable URLs with any protocol, including `file:`.
+   *   Does not accept plain path strings even if they could be coerced into `file:` URLs.
+   *
+   *   new RobustURL("https://example.com/page").href // "https://example.com/page"
+   *   new RobustURL("file:///tmp/file.txt").href     // "file:///tmp/file.txt"
+   *   new RobustURL("/tmp/file.txt").href            // throws
+   *
+   * File-path mode:
+   *   Accepts parseable URLs with the `file:` protocol.
+   *   Coerces plain path strings into URLs with the `file:` protocol.
+   *   Paths that fail `isFilePath` format validation (e.g. Windows reserved
+   *   names like `CON`) are still coerced — `filePath: true` asserts
+   *   caller-as-source-of-truth — but `console.warn` is emitted so the
+   *   looseness is not silent.
+   *
+   *   new RobustURL("https://example.com/page", { filePath: true }).href // throws
+   *   new RobustURL("file:///tmp/file.txt", { filePath: true }).href     // "file:///tmp/file.txt"
+   *   new RobustURL("/tmp/file.txt", { filePath: true }).href            // "file:///tmp/file.txt"
+   *   new RobustURL("/tmp/CON.txt", { filePath: true }).href             // "file:///tmp/CON.txt" (+ console.warn)
+   *
+   * URL-only mode:
+   *   Accepts parseable URLs with any protocol except `file:`.
+   *   Plain path strings always fall back to `file:` URLs in the parser, so
+   *   no plain path string passes this mode.
+   *
+   *   new RobustURL("https://example.com/page", { filePath: false }).href // "https://example.com/page"
+   *   new RobustURL("file:///tmp/file.txt", { filePath: false }).href     // throws
+   *   new RobustURL("/tmp/file.txt", { filePath: false }).href            // throws
+   *
+   *
+   * missingOk Option:
+   *    `missingOk: false` always throws in browser builds.
+   *    In Node, that option can mean "treat this as a file path, but require that it exists."
+   *    Browser code cannot verify whether a file exists, so any explicit `{ missingOk: false }`
+   *    is invalid regardless of `filePath`.
+   *
    *
    * Signatures:
    *   new RobustURL(url)
@@ -35,58 +59,69 @@ export class RobustURL extends BaseRobustURL {
     options?: Options,
   );
   constructor(...args: Array<string | URL | Options | undefined>) {
-    const {
-      _url,
-      _ip,
-      _absoluteFilePath,
-      _opts: parsedOpts,
-    } = BaseRobustURL._constructorArgParser(
-      ...(args as [string | URL, (string | URL)?, Options?]),
-    );
+    const { webURL, ip, absoluteFilePath, fileURL, opts } =
+      BaseRobustURL._constructorArgParser(
+        ...(args as [string | URL, (string | URL)?, Options?]),
+      );
 
-    // missingOk gates disk existence checks, which the browser cannot perform.
-    // Reject requests that require a check, then strip the flag once browser
-    // behavior is decided.
-    if (parsedOpts?.filePath === true && parsedOpts?.missingOk === false) {
+    // missingOk: false requests a disk check the browser cannot do — fatal.
+    // Any other missingOk is irrelevant; drop the key so downstream sees a
+    // clean opts shape with only `filePath` (if anything).
+    if (opts && (opts as OptsWithFile).missingOk === false) {
       throw new TypeError(
-        `filePath assertion requires verifying the file exists on disk, which the browser cannot do. Pass { filePath: true, missingOk: true } to assert a path without checking existence.`,
+        `missingOk: false requested but browser cannot verify file existence. Drop missingOk or pass missingOk: true to assert the path without a disk check.`,
       );
     }
+    if (opts && "missingOk" in opts) {
+      delete (opts as OptsWithFile).missingOk;
+    }
 
-    const _opts: ParsedOptions =
-      parsedOpts === null ? null : { filePath: parsedOpts.filePath };
+    // webURL first, fileURL fallback. Auto mode forbids the fallback because
+    // accepting it would silently treat an unparseable string as a file path
+    // without disk verification.
+    const resolvedURL = webURL ?? fileURL;
+    const filePathOpt = opts ? (opts as OptsWithFile).filePath : undefined;
 
-    // Three branches remain after browser-specific option handling.
     let href: string;
-
-    if (_opts === null) {
-      // Auto: URL only. No on-disk file-path fallback exists in the browser.
-      if (!_url) {
+    if (filePathOpt === undefined) {
+      if (!webURL) {
         throw new TypeError(
-          `Invalid URL: '${String(args[0])}'. Browser cannot auto-detect file paths; pass { filePath: true, missingOk: true } to treat this as a path.`,
+          `Invalid URL: '${String(args[0])}'. Parser had to fall back to a file URL, which requires a disk check the browser cannot perform. Pass { filePath: true } to assert the input is a file path.`,
         );
       }
-      href = String(_url);
-    } else if (_opts.filePath === false) {
-      // URL-only: URL must parse and must not resolve to a file URL.
-      if (!_url) {
+      href = String(webURL);
+    } else if (filePathOpt === true) {
+      // file: URL passed → use it; web URL passed → misaligned, throw.
+      if (webURL) {
+        if (webURL.protocol !== "file:") {
+          throw new TypeError(
+            `filePath: true but resolved URL is not a file URL: '${String(webURL)}'.`,
+          );
+        }
+        href = String(webURL);
+      } else if (absoluteFilePath) {
+        // Path string. Coerce unconditionally — caller asserted filePath:
+        // true — but warn when the format check fails so the looseness is
+        // not silent.
+        if (!isFilePath(absoluteFilePath)) {
+          console.warn(
+            `RobustURL: file path '${absoluteFilePath}' failed format validation. Coercing because caller passed filePath: true.`,
+          );
+        }
+        href = String(pathToFileURL(absoluteFilePath));
+      } else {
         throw new TypeError(`Invalid URL: '${String(args[0])}'.`);
       }
-      if (_url.protocol === "file:") {
-        throw new TypeError(
-          `filePath: false but input resolved to file URL: '${String(_url)}'.`,
-        );
-      }
-      href = String(_url);
     } else {
-      // Caller-asserted path: no existence check is possible. Format validation
-      // is warn-only, then conversion goes directly through `pathToFileURL`.
-      if (!isFilePath(_absoluteFilePath)) {
-        console.warn(
-          `RobustURL: file path '${_absoluteFilePath}' failed format validation. Accepting because caller passed filePath: true; caller is source of truth.`,
+      if (!resolvedURL) {
+        throw new TypeError(`Invalid URL: '${String(args[0])}'.`);
+      }
+      if (resolvedURL.protocol === "file:") {
+        throw new TypeError(
+          `filePath: false but resolved URL is a file URL: '${String(resolvedURL)}'.`,
         );
       }
-      href = String(pathToFileURL(_absoluteFilePath));
+      href = String(resolvedURL);
     }
 
     try {
@@ -98,7 +133,7 @@ export class RobustURL extends BaseRobustURL {
       throw error;
     }
 
-    this._fileOpts = _opts;
-    this._ip = _ip ?? null;
+    this._opts = opts;
+    this._ip = ip ?? null;
   }
 }
