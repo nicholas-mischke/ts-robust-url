@@ -109,7 +109,7 @@ export const parseOptions = (opts: unknown): ParsedOptions => {
  * This class is abstract in spirit: it has no constructor of its own and is
  * not instantiated directly. The `node` and `browser` entry points subclass
  * it and supply the constructor, because file-path handling differs between
- * environments  Node can stat the filesystem to auto-detect existing
+ * environments: Node can stat the filesystem to auto-detect existing
  * files, the browser cannot. Both subclasses funnel their args through
  * `_constructorArgParser` below to keep parsing identical across builds.
  *
@@ -338,7 +338,7 @@ export class RobustURL extends URL {
   /**
    * Serialized `file:` URI when this URL has a usable file path, otherwise
    * `null`. Effectively a typed alias of `toString()` gated on file-scheme
-   * membership  useful when a caller wants to pass a value only if it's
+   * membership, useful when a caller wants to pass a value only if it's
    * a file URI, without a separate `isFileURL` branch.
    */
   get fileURI() {
@@ -484,7 +484,7 @@ export class RobustURL extends URL {
 
   /**
    * Returns a new RobustURL with normalization applied. Delegates to
-   * `normalizeURL`  see [./utils/normalize](./utils/normalize) for the
+   * `normalizeURL`; see [./utils/normalize](./utils/normalize) for the
    * full option set (scheme coercion, default-port stripping, case folding,
    * trailing-slash and `www.` handling, query parameter sorting, etc.).
    * The receiver is not mutated.
@@ -514,7 +514,7 @@ export class RobustURL extends URL {
   /**
    * Serializes the URL. Defaults to WHATWG-standard `href` (default ports
    * omitted). Pass `{ port: true }` to force an explicit port via
-   * `portHref`  useful when emitting endpoint-style URLs that downstream
+   * `portHref`, useful when emitting endpoint-style URLs that downstream
    * tools won't reconstruct the default from.
    *
    * Note: this overrides `URL.prototype.toString`, which takes no arguments
