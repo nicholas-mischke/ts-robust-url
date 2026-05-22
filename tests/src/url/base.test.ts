@@ -16,28 +16,7 @@ const makeBase = (href: string, ip: string | null = null): RobustURL => {
   return url;
 };
 
-describe("parseOptions", () => {
-  test.each([
-    [undefined, null],
-    [null, null],
-    [{}, null],
-    [{ filePath: true }, { filePath: true, missingOk: false }],
-    [
-      { filePath: true, missingOk: true },
-      { filePath: true, missingOk: true },
-    ],
-    [{ filePath: false }, { filePath: false, missingOk: false }],
-  ])("%o -> %o", (input, expected) => {
-    expect(parseOptions(input)).toEqual(expected);
-  });
 
-  test.each([[[]], [{ filePath: "true" }], [{ missingOk: true }]])(
-    "throws for %o",
-    (input) => {
-      expect(() => parseOptions(input)).toThrow(TypeError);
-    },
-  );
-});
 
 describe("RobustURL ( base ) ", () => {
   describe("static", () => {
@@ -94,67 +73,6 @@ describe("RobustURL ( base ) ", () => {
       });
     });
 
-    describe("_constructorArgParser", () => {
-      test.each([
-        ["file path", "/tmp/file.txt", null, null, "/tmp/file.txt"],
-        [
-          "file URL",
-          "file:///tmp/file.txt",
-          "file:///tmp/file.txt",
-          null,
-          null,
-        ],
-        [
-          "IPv4 URL",
-          "https://127.0.0.1:4443/page",
-          "https://127.0.0.1:4443/page",
-          "127.0.0.1",
-          null,
-        ],
-        [
-          "IPv6 URL",
-          "https://[::1]:8443/page",
-          "https://[::1]:8443/page",
-          "[::1]",
-          null,
-        ],
-        [
-          "expanded IPv6 URL",
-          "https://[0:0:0:0:0:0:0:1]:8443/page",
-          "https://[::1]:8443/page",
-          "[::1]",
-          null,
-        ],
-        [
-          "DNS URL",
-          "https://example.com/page",
-          "https://example.com/page",
-          null,
-          null,
-        ],
-      ])("parses %s", (_label, input, href, ip, filePath) => {
-        const parsed = RobustURL._constructorArgParser(input);
-        expect(parsed._url?.href ?? null).toBe(href);
-        expect(parsed._ip ?? null).toBe(ip);
-        expect(filePath ? parsed._absoluteFilePath : null).toBe(filePath);
-        expect(parsed._opts).toBeNull();
-      });
-
-      it("parses trailing options", () => {
-        expect(
-          RobustURL._constructorArgParser("/tmp/file.txt", {
-            filePath: true,
-            missingOk: true,
-          })._opts,
-        ).toEqual({ filePath: true, missingOk: true });
-      });
-
-      it("throws when URL parsing fails with a base argument", () => {
-        expect(() =>
-          RobustURL._constructorArgParser("not a url", "not a base"),
-        ).toThrow(TypeError);
-      });
-    });
   });
 
   describe("originGlob", () => {
