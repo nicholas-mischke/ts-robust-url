@@ -12,9 +12,8 @@
  * `dist/url/browser.js`, so the Node implementation (which pulls in
  * `node:path` and file-path helpers) is never resolved or shipped.
  *
- * Only symbols common to both implementations are re-exported here.
- * Node-only helpers (file-path conversion, `fileExists`, etc.) must be
- * imported from `./node` directly by Node-only callers.
+ * Only `RobustURL` is re-exported here. Node-only helpers such as `fileExists`
+ * are exported from the package root (`src/index.ts`) via `./node`.
  *
  * See `package.json` → `"browser"` field for the bundler mapping.
  */

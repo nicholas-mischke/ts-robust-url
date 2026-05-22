@@ -3,16 +3,8 @@ import {
   type Options,
   type ParsedOptions,
 } from "./base";
-import {
-  filePathToURL,
-  isFilePath,
-  isFileURL,
-  urlToFilePath,
-} from "../path/filepath";
+import { isFilePath } from "../path/filepath";
 import { pathToFileURL } from "../path/utils";
-
-export { filePathToURL, isFilePath, isFileURL, urlToFilePath };
-export { isCanonicalLocalhost } from "../ip";
 
 export class RobustURL extends BaseRobustURL {
   /**

@@ -2,16 +2,8 @@
 import fs from "node:fs";
 
 import { RobustURL as BaseRobustURL, type Options } from "./base";
-import {
-  filePathToURL,
-  isFilePath,
-  isFileURL,
-  urlToFilePath,
-} from "../path/filepath";
+import { filePathToURL, isFilePath } from "../path/filepath";
 import { pathToFileURL } from "../path/utils";
-
-export { filePathToURL, isFilePath, isFileURL, urlToFilePath };
-export { isCanonicalLocalhost } from "../ip";
 
 /**
  * Returns true if `filePath` is a string pointing to an existing file on disk.
