@@ -3,15 +3,24 @@
   "version": "0.1.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "browser": {
+    "./dist/path/utils/index.js": "./dist/path/utils/browser.js",
+    "./dist/url/index.js": "./dist/url/browser.js"
+  },
   "description": "chat bot add this",
   "scripts": {
     "build": "tsc --watch",
     "test": "vitest run --config tests/vitest.config.ts"
   },
   "dependencies": {
+    "file-uri-to-path": "^2.0.0",
+    "file-url": "^4.0.0",
     "ipaddr.js": "^2.4.0",
     "lodash-es": "^4.18.1",
-    "normalize-url": "^9.0.1"
+    "loupe": "^3.2.1",
+    "normalize-url": "^9.0.1",
+    "path-browserify": "^1.0.1",
+    "type-detect": "^4.1.0"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.24",

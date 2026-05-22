@@ -3,6 +3,7 @@
 .claude
 tempCodeRunnerFile.*
 .DS_Store
+/sandbox*.ts
 
 # webpack
 dist
