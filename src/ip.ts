@@ -1,21 +1,60 @@
 import ipaddr from "ipaddr.js";
 
-const parseIPAddress = (
-  value: string | null,
-): ipaddr.IPv4 | ipaddr.IPv6 | null => {
-  if (!value) return null;
+/**
+ * Returns true when `value` is a valid IPv4 address.
+ *
+ * This is a strict IP-address check, not a hostname check. Invalid strings
+ * and non-IPv4 addresses return false.
+ */
+export const isIPv4 = (value: string | null): boolean => {
+  if (typeof value !== "string") return false;
 
-  const host =
-    value.startsWith("[") && value.endsWith("]") ? value.slice(1, -1) : value;
-
-  return ipaddr.isValid(host) ? ipaddr.parse(host) : null;
+  return ipaddr.isValid(value) && ipaddr.parse(value).kind() === "ipv4";
 };
 
-export const isIPv4 = (value: string | null): boolean =>
-  parseIPAddress(value)?.kind() === "ipv4";
+/**
+ * Returns true when `value` is a valid IPv6 address.
+ *
+ * Accepts both bare IPv6 addresses (`::1`) and URL/Host-header bracketed IPv6
+ * addresses (`[::1]`). Invalid strings and non-IPv6 addresses return false.
+ */
+export const isIPv6 = (value: string | null): boolean => {
+  if (typeof value !== "string") return false;
 
-export const isIPv6 = (value: string | null): boolean =>
-  parseIPAddress(value)?.kind() === "ipv6";
+  if (value.startsWith("[") && value.endsWith("]")) {
+    value = value.slice(1, -1);
+  }
+
+  return ipaddr.isValid(value) && ipaddr.parse(value).kind() === "ipv6";
+};
+
+/**
+ * Returns a normalized bare IPv6 address.
+ *
+ * Accepts bare or bracketed IPv6 input. The returned value is always the
+ * normalized IPv6 address without brackets if `value` is valid IPv6. Throws
+ * when `value` is not a valid IPv6 address.
+ */
+export const normalizeIPv6 = (value: string): string => {
+  if (!isIPv6(value)) {
+    throw new Error(`Invalid IPv6 address: ${value}`);
+  }
+
+  if (value.startsWith("[") && value.endsWith("]")) {
+    value = value.slice(1, -1);
+  }
+
+  return ipaddr.parse(value).toString();
+};
+
+const LOCALHOST_IPV4_OCTETS = [127, 0, 0, 1] as const;
+const LOCALHOST_IPV6_PARTS = [0, 0, 0, 0, 0, 0, 0, 1] as const;
+
+const isLocalhostIPv4 = (addr: ipaddr.IPv4): boolean =>
+  LOCALHOST_IPV4_OCTETS.every((octet, index) => addr.octets[index] === octet);
+
+const isLocalhostIPv6 = (addr: ipaddr.IPv6): boolean =>
+  LOCALHOST_IPV6_PARTS.every((part, index) => addr.parts[index] === part);
 
 /**
  * Returns true only for canonical localhost hostnames/addresses.
@@ -40,7 +79,8 @@ export const isIPv6 = (value: string | null): boolean =>
  * Notes:
  * - IPv6 bracket notation like "[::1]" is supported.
  * - Trailing dots like "localhost." are normalized.
- * - Uses ipaddr.js normalization/parsing to handle edge-case IP formats safely.
+ * - Uses ipaddr.js parsing and numeric address comparisons to handle edge-case
+ *   IP formats safely.
  */
 export const isCanonicalLocalhost = (value: unknown): boolean => {
   if (typeof value !== "string") return false;
@@ -71,17 +111,18 @@ export const isCanonicalLocalhost = (value: unknown): boolean => {
   const addr = ipaddr.parse(host);
 
   if (addr.kind() === "ipv4") {
-    return addr.toString() === "127.0.0.1";
+    return isLocalhostIPv4(addr as ipaddr.IPv4);
   }
 
   if (addr.kind() === "ipv6") {
-    if (addr.toString() === "::1") {
+    const ipv6Addr = addr as ipaddr.IPv6;
+
+    if (isLocalhostIPv6(ipv6Addr)) {
       return true;
     }
 
-    const ipv6Addr = addr as ipaddr.IPv6;
     if (ipv6Addr.isIPv4MappedAddress()) {
-      return ipv6Addr.toIPv4Address().toString() === "127.0.0.1";
+      return isLocalhostIPv4(ipv6Addr.toIPv4Address());
     }
   }
 
