@@ -7,7 +7,7 @@
     "./dist/path/utils/index.js": "./dist/path/utils/browser.js",
     "./dist/url/index.js": "./dist/url/browser.js"
   },
-  "description": "chat bot add this",
+  "description": "URL and file-path utilities for Node and browser: RobustURL extends the native URL with file-path auto-detection, normalization, equality checks, and IPv4/IPv6 helpers.",
   "scripts": {
     "build": "tsc",
     "build:dev": "tsc --watch",
