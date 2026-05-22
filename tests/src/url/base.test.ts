@@ -1,0 +1,316 @@
+// 3rd
+import { describe, expect, it, test } from "vitest";
+
+// local
+import { parseOptions, type ParsedOptions, RobustURL } from "@src/url/base";
+
+type WithProtectedFields = RobustURL & {
+  _fileOpts: ParsedOptions;
+  _ip: string | null;
+};
+
+const makeBase = (href: string, ip: string | null = null): RobustURL => {
+  const url = new RobustURL(href) as WithProtectedFields;
+  url._fileOpts = null;
+  url._ip = ip;
+  return url;
+};
+
+describe("parseOptions", () => {
+  test.each([
+    [undefined, null],
+    [null, null],
+    [{}, null],
+    [{ filePath: true }, { filePath: true, missingOk: false }],
+    [
+      { filePath: true, missingOk: true },
+      { filePath: true, missingOk: true },
+    ],
+    [{ filePath: false }, { filePath: false, missingOk: false }],
+  ])("%o -> %o", (input, expected) => {
+    expect(parseOptions(input)).toEqual(expected);
+  });
+
+  test.each([[[]], [{ filePath: "true" }], [{ missingOk: true }]])(
+    "throws for %o",
+    (input) => {
+      expect(() => parseOptions(input)).toThrow(TypeError);
+    },
+  );
+});
+
+describe("RobustURL ( base ) ", () => {
+  describe("static", () => {
+    describe("fromParts", () => {
+      test.each([
+        ["DNS", ["https", "example.com"] as const, "https://example.com/"],
+        [
+          "IPv4",
+          ["https", "127.0.0.1", 4443] as const,
+          "https://127.0.0.1:4443/",
+        ],
+        ["IPv6 bare", ["https", "::1", 8443] as const, "https://[::1]:8443/"],
+        [
+          "IPv6 bracketed",
+          ["https", "[::1]", 8443] as const,
+          "https://[::1]:8443/",
+        ],
+        [
+          "IPv6 expanded",
+          ["https", "0:0:0:0:0:0:0:1", 8443] as const,
+          "https://[::1]:8443/",
+        ],
+      ])("builds %s URLs", (_label, args, expected) => {
+        const [protocol, hostname, port] = args;
+        expect(RobustURL.fromParts(protocol, hostname, port).href).toBe(
+          expected,
+        );
+      });
+
+      test.each([
+        ["", "example.com", 443],
+        ["https", "", 443],
+        ["ftp", "127.0.0.1", undefined],
+        ["https", "127.0.0.1", 65536],
+      ] as const)("throws for invalid parts %o", (protocol, host, port) => {
+        expect(() => RobustURL.fromParts(protocol, host, port)).toThrow(
+          TypeError,
+        );
+      });
+
+      it("encodes userinfo and rejects password-only userinfo", () => {
+        expect(
+          RobustURL.fromParts("https", "example.com", undefined, {
+            username: "a@b",
+            password: "p:w/d",
+          }).href,
+        ).toBe("https://a%40b:p%3Aw%2Fd@example.com/");
+
+        expect(() =>
+          RobustURL.fromParts("https", "example.com", undefined, {
+            password: "secret",
+          }),
+        ).toThrow(/password requires a username/);
+      });
+    });
+
+    describe("_constructorArgParser", () => {
+      test.each([
+        ["file path", "/tmp/file.txt", null, null, "/tmp/file.txt"],
+        [
+          "file URL",
+          "file:///tmp/file.txt",
+          "file:///tmp/file.txt",
+          null,
+          null,
+        ],
+        [
+          "IPv4 URL",
+          "https://127.0.0.1:4443/page",
+          "https://127.0.0.1:4443/page",
+          "127.0.0.1",
+          null,
+        ],
+        [
+          "IPv6 URL",
+          "https://[::1]:8443/page",
+          "https://[::1]:8443/page",
+          "[::1]",
+          null,
+        ],
+        [
+          "expanded IPv6 URL",
+          "https://[0:0:0:0:0:0:0:1]:8443/page",
+          "https://[::1]:8443/page",
+          "[::1]",
+          null,
+        ],
+        [
+          "DNS URL",
+          "https://example.com/page",
+          "https://example.com/page",
+          null,
+          null,
+        ],
+      ])("parses %s", (_label, input, href, ip, filePath) => {
+        const parsed = RobustURL._constructorArgParser(input);
+        expect(parsed._url?.href ?? null).toBe(href);
+        expect(parsed._ip ?? null).toBe(ip);
+        expect(filePath ? parsed._absoluteFilePath : null).toBe(filePath);
+        expect(parsed._opts).toBeNull();
+      });
+
+      it("parses trailing options", () => {
+        expect(
+          RobustURL._constructorArgParser("/tmp/file.txt", {
+            filePath: true,
+            missingOk: true,
+          })._opts,
+        ).toEqual({ filePath: true, missingOk: true });
+      });
+
+      it("throws when URL parsing fails with a base argument", () => {
+        expect(() =>
+          RobustURL._constructorArgParser("not a url", "not a base"),
+        ).toThrow(TypeError);
+      });
+    });
+  });
+
+  describe("originGlob", () => {
+    it("returns an origin-scoped wildcard", () => {
+      expect(new RobustURL("https://example.com/page").originGlob).toBe(
+        "https://example.com/*",
+      );
+    });
+  });
+
+  describe("file state getters", () => {
+    describe("isFileURL", () => {
+      test.each([
+        ["file:///tmp/file.txt", true],
+        ["https://example.com/page", false],
+      ])("%s -> %s", (input, expected) => {
+        expect(new RobustURL(input).isFileURL).toBe(expected);
+      });
+    });
+
+    describe("filePath", () => {
+      test.each([
+        ["file:///tmp/file.txt", "/tmp/file.txt"],
+        ["https://example.com/page", null],
+      ])("%s -> %s", (input, expected) => {
+        expect(new RobustURL(input).filePath).toBe(expected);
+      });
+    });
+
+    describe("fileURI", () => {
+      test.each([
+        ["file:///tmp/file.txt", "file:///tmp/file.txt"],
+        ["https://example.com/page", null],
+      ])("%s -> %s", (input, expected) => {
+        expect(new RobustURL(input).fileURI).toBe(expected);
+      });
+    });
+  });
+
+  describe("ip getters", () => {
+    describe("ip", () => {
+      test.each([
+        ["IPv4", "https://127.0.0.1:4443/page", "127.0.0.1", "127.0.0.1"],
+        ["IPv6", "https://[::1]:8443/page", "[::1]", "[::1]"],
+        ["DNS", "https://example.com/page", null, null],
+      ])("%s", (_label, href, storedIp, expected) => {
+        expect(makeBase(href, storedIp).ip).toBe(expected);
+      });
+    });
+
+    describe("ipv4", () => {
+      test.each([
+        ["IPv4", "https://127.0.0.1:4443/page", "127.0.0.1", "127.0.0.1"],
+        ["IPv6", "https://[::1]:8443/page", "[::1]", null],
+        ["DNS", "https://example.com/page", null, null],
+      ])("%s", (_label, href, storedIp, expected) => {
+        expect(makeBase(href, storedIp).ipv4).toBe(expected);
+      });
+    });
+
+    describe("ipv6", () => {
+      test.each([
+        ["IPv4", "https://127.0.0.1:4443/page", "127.0.0.1", null],
+        ["IPv6", "https://[::1]:8443/page", "[::1]", "[::1]"],
+        ["DNS", "https://example.com/page", null, null],
+      ])("%s", (_label, href, storedIp, expected) => {
+        expect(makeBase(href, storedIp).ipv6).toBe(expected);
+      });
+
+      test.each([
+        ["::1", "[::1]"],
+        ["[::1]", "[::1]"],
+        ["0:0:0:0:0:0:0:1", "[::1]"],
+      ])(
+        "normalizes stored IPv6 _ip to bracketed form for %s",
+        (storedIp, expectedIp) => {
+          const url = makeBase("https://[::1]:8443/page", storedIp);
+          expect(url.ip).toBe(expectedIp);
+          expect(url.ipv6).toBe(expectedIp);
+        },
+      );
+    });
+  });
+
+  describe("port", () => {
+    test.each([
+      ["HTTPS implied", "https://example.com/page", 443],
+      ["HTTP implied", "http://example.com/page", 80],
+      ["explicit IPv4", "https://127.0.0.1:4443/page", 4443],
+      ["explicit IPv6", "https://[::1]:8443/page", 8443],
+      ["file", "file:///tmp/file.txt", null],
+    ])("%s", (_label, input, expected) => {
+      expect(new RobustURL(input).port).toBe(expected);
+    });
+  });
+
+  describe("authority", () => {
+    test.each([
+      ["https://example.com/page", "example.com"],
+      ["https://user:pass@example.com/page", "user:pass@example.com"],
+      ["https://127.0.0.1:4443/page", "127.0.0.1:4443"],
+      ["https://[::1]:8443/page", "[::1]:8443"],
+      ["file:///tmp/file.txt", null],
+    ])("%s -> %s", (input, expected) => {
+      expect(new RobustURL(input).authority).toBe(expected);
+    });
+  });
+
+  describe("domain", () => {
+    test.each([
+      ["https://example.com/page", "example.com"],
+      ["https://127.0.0.1:4443/page", null],
+      ["https://[::1]:8443/page", null],
+      ["file:///tmp/file.txt", null],
+    ])("%s -> %s", (input, expected) => {
+      expect(new RobustURL(input).domain).toBe(expected);
+    });
+  });
+
+  describe("portHref", () => {
+    test.each([
+      ["https://example.com/page", "https://example.com:443/page"],
+      ["http://example.com/page", "http://example.com:80/page"],
+      ["https://127.0.0.1:4443/page", "https://127.0.0.1:4443/page"],
+      ["https://[::1]:8443/page", "https://[::1]:8443/page"],
+      ["file:///tmp/file.txt", "file:///tmp/file.txt"],
+    ])("%s -> %s", (input, expected) => {
+      expect(new RobustURL(input).portHref).toBe(expected);
+    });
+  });
+
+  describe("normalize", () => {
+    it("returns a new RobustURL", () => {
+      const url = new RobustURL("https://www.example.com/page/");
+      const normalized = url.normalize();
+      expect(normalized).toBeInstanceOf(RobustURL);
+      expect(normalized.href).toBe("https://example.com/page");
+      expect(normalized).not.toBe(url);
+    });
+  });
+
+  describe("isEqual", () => {
+    it("compares through urlsAreEqual", () => {
+      const url = new RobustURL("http://example.com/page");
+      expect(url.isEqual("https://example.com/page")).toBe(true);
+      expect(
+        url.isEqual("https://example.com/page", { httpOrHttps: false }),
+      ).toBe(false);
+    });
+  });
+
+  describe("toString", () => {
+    it("serializes with or without explicit default ports", () => {
+      const url = new RobustURL("https://example.com/page");
+      expect(url.toString()).toBe("https://example.com/page");
+      expect(url.toString({ port: true })).toBe("https://example.com:443/page");
+    });
+  });
+});

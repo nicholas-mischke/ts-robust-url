@@ -47,6 +47,17 @@ export const normalizeIPv6 = (value: string): string => {
   return ipaddr.parse(value).toString();
 };
 
+/**
+ * Returns a normalized, URL-safe bracketed IPv6 address.
+ *
+ * Accepts bare or bracketed IPv6 input. The returned value is always
+ * `[<normalized-ipv6>]` suitable for URL authority segments and the
+ * `RobustURL.ip` accessor.
+ */
+export const bracketIPv6 = (value: string): string => {
+  return `[${normalizeIPv6(value)}]`;
+};
+
 const LOCALHOST_IPV4_OCTETS = [127, 0, 0, 1] as const;
 const LOCALHOST_IPV6_PARTS = [0, 0, 0, 0, 0, 0, 0, 1] as const;
 
