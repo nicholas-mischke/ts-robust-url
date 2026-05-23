@@ -227,7 +227,7 @@ normalized === url;
 
 ### URL Equality
 
-`urlsAreEqual(...)` compares two URL strings or `URL` objects after applying the package normalization rules. `RobustURL.isEqual(...)` uses the same comparison from an existing `RobustURL` instance.
+`equalURLs(...)` compares two URL strings or `URL` objects after applying the package normalization rules. `RobustURL.isEqual(...)` uses the same comparison from an existing `RobustURL` instance.
 
 Equality options include every `normalizeURL` option plus:
 
@@ -239,20 +239,20 @@ Equality options include every `normalizeURL` option plus:
 
 When `httpOrHttps` is `true`, HTTP and HTTPS variants compare equal by normalizing both sides to HTTPS. Set it to `false` when the protocol must match exactly.
 
-#### `urlsAreEqual`
+#### `equalURLs`
 
 Localhost aliases compare equal by default.
 
 ```ts
-import { urlsAreEqual } from "robust-url";
+import { equalURLs } from "robust-url";
 
-urlsAreEqual("https://localhost:4443/page", "https://127.0.0.1:4443/page");
+equalURLs("https://localhost:4443/page", "https://127.0.0.1:4443/page");
 // true
 
-urlsAreEqual("https://localhost:8443/page", "https://[::1]:8443/page");
+equalURLs("https://localhost:8443/page", "https://[::1]:8443/page");
 // true
 
-urlsAreEqual("https://localhost:4443/page", "https://127.0.0.1:4443/page", {
+equalURLs("https://localhost:4443/page", "https://127.0.0.1:4443/page", {
   localhost: false,
 });
 // false
@@ -261,10 +261,10 @@ urlsAreEqual("https://localhost:4443/page", "https://127.0.0.1:4443/page", {
 HTTP and HTTPS compare equal by default.
 
 ```ts
-urlsAreEqual("http://example.com/page", "https://example.com/page");
+equalURLs("http://example.com/page", "https://example.com/page");
 // true
 
-urlsAreEqual("http://example.com/page", "https://example.com/page", {
+equalURLs("http://example.com/page", "https://example.com/page", {
   httpOrHttps: false,
 });
 // false
@@ -273,13 +273,13 @@ urlsAreEqual("http://example.com/page", "https://example.com/page", {
 Because equality uses normalization, URLs with different surface forms can still compare equal.
 
 ```ts
-urlsAreEqual(
+equalURLs(
   "https://www.example.com/page/user?z=26&a=1#hash",
   "https://example.com/page/user?a=1&z=26",
 );
 // true
 
-urlsAreEqual("https://www.example.com/page", "https://example.com/page", {
+equalURLs("https://www.example.com/page", "https://example.com/page", {
   stripWWW: false,
 });
 // false
@@ -287,7 +287,7 @@ urlsAreEqual("https://www.example.com/page", "https://example.com/page", {
 
 #### `RobustURL.isEqual`
 
-`RobustURL.isEqual(...)` compares the receiver with a string, native `URL`, or another `RobustURL`. It accepts the same options as `urlsAreEqual(...)`.
+`RobustURL.isEqual(...)` compares the receiver with a string, native `URL`, or another `RobustURL`. It accepts the same options as `equalURLs(...)`.
 
 ```ts
 import { RobustURL } from "robust-url";

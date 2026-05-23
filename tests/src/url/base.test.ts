@@ -215,12 +215,45 @@ describe("RobustURL ( base ) ", () => {
   });
 
   describe("isEqual", () => {
-    it("compares through urlsAreEqual", () => {
+    it("compares through equalURLs", () => {
       const url = new RobustURL("http://example.com/page");
-      expect(url.isEqual("https://example.com/page")).toBe(true);
+      expect(url.isEqual("https://example.com/page")).toBe(false);
       expect(
-        url.isEqual("https://example.com/page", { httpOrHttps: false }),
-      ).toBe(false);
+        url.isEqual("https://example.com/page", { forceHttps: true }),
+      ).toBe(true);
+    });
+  });
+
+  describe("isEqualString", () => {
+    it("returns true for equal hrefs", () => {
+      const url = new RobustURL("https://example.com/page");
+      expect(url.isEqualString("https://example.com/page")).toBe(true);
+    });
+
+    it("returns false for differing schemes", () => {
+      const url = new RobustURL("http://example.com/page");
+      expect(url.isEqualString("https://example.com/page")).toBe(false);
+    });
+
+    // Trailing-slash behavior: both sides flow through URL.href, which adds
+    // an origin-level "/" — so a host without a trailing slash compares
+    // equal to the same host with one. This is the key distinction from
+    // equalURLStrings, which does a raw byte comparison and returns false.
+    it("treats origin without trailing slash as equal to with (URL.href normalization)", () => {
+      const url = new RobustURL("https://example.com");
+      expect(url.isEqualString("https://example.com/")).toBe(true);
+      const url2 = new RobustURL("https://example.com/");
+      expect(url2.isEqualString("https://example.com")).toBe(true);
+    });
+
+    it("preserves path-level trailing slash differences", () => {
+      const url = new RobustURL("https://example.com/path");
+      expect(url.isEqualString("https://example.com/path/")).toBe(false);
+    });
+
+    it("returns false rather than throwing on invalid input", () => {
+      const url = new RobustURL("https://example.com/");
+      expect(url.isEqualString("not a url")).toBe(false);
     });
   });
 

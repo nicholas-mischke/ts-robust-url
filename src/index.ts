@@ -10,7 +10,7 @@ export {
   DEFAULT_NORMALIZE_OPTIONS,
   type NormalizeOptions,
 } from "./url/utils/normalize";
-export { urlsAreEqual, type EqualityOptions } from "./url/utils/equality";
+export { equalURLs, equalURLStrings } from "./url/utils/equality";
 export {
   isURL,
   URLtoString,

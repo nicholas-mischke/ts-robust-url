@@ -3,7 +3,7 @@ import isPlainObject from "lodash-es/isPlainObject";
 import { bracketIPv6, isIPv4, isIPv6 } from "../ip";
 import { filePathToURL, urlToFilePath } from "../path/filepath";
 import { path } from "../path/utils";
-import { type EqualityOptions, urlsAreEqual } from "./utils/equality";
+import { equalURLs } from "./utils/equality";
 import { type NormalizeOptions, normalizeURL } from "./utils/normalize";
 import { normalizeProtocol } from "./utils/utils";
 
@@ -451,7 +451,7 @@ export class RobustURL extends URL {
   /**
    * Tests whether this URL and `other` refer to the same resource under the
    * package's normalization rules. The comparison is delegated to
-   * `urlsAreEqual`; see [./utils/equality](./utils/equality) for the full
+   * `equalURLs`; see [./utils/equality](./utils/equality) for the full
    * option set and defaults (including HTTP/HTTPS equivalence and localhost
    * loopback aliasing).
    *
@@ -460,10 +460,37 @@ export class RobustURL extends URL {
    */
   isEqual(
     other: string | URL | RobustURL,
-    options: EqualityOptions = {},
+    options: NormalizeOptions = {},
   ): boolean {
     const otherUrl = other instanceof RobustURL ? other : new RobustURL(other);
-    return urlsAreEqual(this, otherUrl, options);
+    return equalURLs(this, otherUrl, options);
+  }
+
+  /**
+   * Strict href-equality check: `other` is coerced to RobustURL and its
+   * serialized `href` is compared verbatim to this URL's `href`. No
+   * equality-time normalization is applied — use `isEqual` for scheme/host
+   * normalization rules.
+   *
+   * Trailing-slash behavior: because both sides flow through `URL.href`,
+   * **origin-level trailing slashes are always added**. So
+   * `"https://example.com"` and `"https://example.com/"` compare **equal**
+   * here (both serialize to `"https://example.com/"`), unlike `equalURLStrings`
+   * which does a raw byte comparison and would mark them unequal. Path-level
+   * slashes are preserved: `"https://example.com/path"` and
+   * `"https://example.com/path/"` still compare unequal.
+   *
+   * If coercion fails (invalid URL), this returns `false` rather than throwing,
+   * so it is safe to call on untrusted input from filters and option lists.
+   */
+  isEqualString(other: string | URL | RobustURL): boolean {
+    let otherUrl: RobustURL;
+    try {
+      otherUrl = other instanceof RobustURL ? other : new RobustURL(other);
+    } catch {
+      return false;
+    }
+    return this.href === otherUrl.href;
   }
 
   /**
