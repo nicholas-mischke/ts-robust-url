@@ -4,6 +4,13 @@ import { pathToFileURL } from "../path/utils";
 
 type OptsWithFile = { filePath?: boolean; missingOk?: boolean };
 
+/**
+ * Browser builds cannot stat the filesystem; always returns false.
+ */
+export const fileExists = (
+  _filePath: string | undefined | null,
+): boolean => false;
+
 export class RobustURL extends BaseRobustURL {
   /**
    * Construct a RobustURL from a parseable URL or a plain path string.

@@ -228,7 +228,9 @@ export class RobustURL extends URL {
         absoluteFilePath = path.resolve(String(urlArg));
       } else {
         const baseStr = String(baseArg);
-        const baseDir = /[\\/]$/.test(baseStr) ? baseStr : path.dirname(baseStr);
+        const baseDir = /[\\/]$/.test(baseStr)
+          ? baseStr
+          : path.dirname(baseStr);
         absoluteFilePath = path.resolve(baseDir, String(urlArg));
       }
     }

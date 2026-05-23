@@ -3,9 +3,20 @@
   "version": "0.1.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/index.js",
+      "node": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "browser": {
+    "path": "path-browserify",
     "./dist/path/utils/index.js": "./dist/path/utils/browser.js",
-    "./dist/url/index.js": "./dist/url/browser.js"
+    "./dist/path/utils/node.js": "./dist/path/utils/browser.js",
+    "./dist/url/index.js": "./dist/url/browser.js",
+    "./dist/url/node.js": "./dist/url/browser.js"
   },
   "description": "URL and file-path utilities for Node and browser: RobustURL extends the native URL with file-path auto-detection, normalization, equality checks, and IPv4/IPv6 helpers.",
   "scripts": {
@@ -14,14 +25,10 @@
     "test": "vitest run --config tests/vitest.config.ts"
   },
   "dependencies": {
-    "file-uri-to-path": "^2.0.0",
-    "file-url": "^4.0.0",
     "ipaddr.js": "^2.4.0",
     "lodash-es": "^4.18.1",
-    "loupe": "^3.2.1",
     "normalize-url": "^9.0.1",
-    "path-browserify": "^1.0.1",
-    "type-detect": "^4.1.0"
+    "path-browserify": "^1.0.1"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.24",

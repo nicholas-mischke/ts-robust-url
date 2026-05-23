@@ -2,7 +2,7 @@
 export { RobustURL } from "./url";
 export { type Options } from "./url/base";
 
-// Node-only
+// Node-only in Node; package.json "browser" swaps dist/url/node.js → dist/url/browser.js
 export { fileExists } from "./url/node";
 
 export {
