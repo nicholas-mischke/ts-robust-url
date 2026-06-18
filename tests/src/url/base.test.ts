@@ -39,6 +39,11 @@ describe("RobustURL ( base ) ", () => {
           ["https", "0:0:0:0:0:0:0:1", 8443] as const,
           "https://[::1]:8443/",
         ],
+        [
+          "DNS with explicit port",
+          ["socks5", "proxy.example", 8001] as const,
+          "socks5://proxy.example:8001/",
+        ],
       ])("builds %s URLs", (_label, args, expected) => {
         const [protocol, hostname, port] = args;
         expect(RobustURL.fromParts(protocol, hostname, port).href).toBe(
@@ -262,6 +267,32 @@ describe("RobustURL ( base ) ", () => {
       const url = new RobustURL("https://example.com/page");
       expect(url.toString()).toBe("https://example.com/page");
       expect(url.toString({ port: true })).toBe("https://example.com:443/page");
+    });
+
+    it("masks passwords by default and reveals them when safe is false", () => {
+      const url = new RobustURL("https://user:secret@example.com/page");
+      expect(url.toString()).toBe("https://user:***@example.com/page");
+      expect(url.toString({ safe: false })).toBe(
+        "https://user:secret@example.com/page",
+      );
+    });
+
+    it("masks passwords without double-encoding usernames", () => {
+      const url = RobustURL.fromParts("https", "example.com", undefined, {
+        username: "a@b",
+        password: "secret",
+      });
+      expect(url.toString()).toBe("https://a%40b:***@example.com/");
+    });
+
+    it("masks passwords with explicit ports without revealing length", () => {
+      const url = new RobustURL("https://user:verylongpassword@example.com/page");
+      expect(url.toString({ port: true })).toBe(
+        "https://user:***@example.com:443/page",
+      );
+      expect(url.toString({ port: true, safe: false })).toBe(
+        "https://user:verylongpassword@example.com:443/page",
+      );
     });
   });
 });

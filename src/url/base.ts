@@ -74,10 +74,10 @@ export class RobustURL extends URL {
    * - For IP hosts: port is required, either explicitly or via the protocol's
    *   implicit default (`http` to 80, `https` to 443). If neither is available
    *   the call throws.
-   * - For domain hosts: port is ignored. Domains don't get an explicit port
-   *   appended (so the result is `http://example.com/`, not
-   *   `http://example.com:80/`). Pass a domain through `new RobustURL(...)`
-   *   if you need to attach a non-default port.
+   * - For domain hosts: port is optional. When omitted, no port is appended
+   *   (so the result is `http://example.com/`, not `http://example.com:80/`).
+   *   When an explicit port is provided, it is appended (e.g.
+   *   `socks5://proxy.example:8001/`).
    * - When provided, port is coerced to an integer and must be in [1, 65535].
    *
    * @throws {TypeError} If protocol is empty, hostname is empty, port is out
@@ -137,8 +137,8 @@ export class RobustURL extends URL {
     // Resolve the host segment. IPv6 is normalized and bracketed for URL syntax.
     const host = _hostnameIsIPv6 ? bracketIPv6(hostname) : hostname;
 
-    // Resolve the port segment. IP hosts require a port (explicit or
-    // implicit); domain hosts never get one appended.
+    // Resolve the port segment. IP hosts require a port (explicit or implicit).
+    // Domain hosts omit port unless the caller supplies one explicitly.
     let portSegment = "";
     if (_hostnameIsIP) {
       const resolved = _explicitPort ?? _implicitPort;
@@ -148,6 +148,8 @@ export class RobustURL extends URL {
         );
       }
       portSegment = `:${resolved}`;
+    } else if (_explicitPort !== null) {
+      portSegment = `:${_explicitPort}`;
     }
 
     return new this(`${_protocol}://${userInfo}${host}${portSegment}/`);
@@ -499,11 +501,29 @@ export class RobustURL extends URL {
    * `portHref`, useful when emitting endpoint-style URLs that downstream
    * tools won't reconstruct the default from.
    *
+   * By default (`safe: true`) any password in userinfo is replaced with `***`
+   * so logs and string coercions do not leak credentials or their length.
+   * Pass `{ safe: false }` to include the full password.
+   *
    * Note: this overrides `URL.prototype.toString`, which takes no arguments
    * in the spec. The options bag is additive; calling `toString()` with no
    * args remains spec-compatible.
    */
-  toString({ port = false }: { port?: boolean } = {}): string {
-    return port ? this.portHref : this.href;
+  toString({
+    port = false,
+    safe = true,
+  }: { port?: boolean; safe?: boolean } = {}): string {
+    if (!safe || !super.password) {
+      return port ? this.portHref : this.href;
+    }
+
+    const userInfo = `${super.username}:***@`;
+
+    if (port && super.host && this.port) {
+      const host = super.port ? super.host : `${super.hostname}:${this.port}`;
+      return `${this.protocol}//${userInfo}${host}${this.pathname}${this.search}${this.hash}`;
+    }
+
+    return `${this.protocol}//${userInfo}${super.host}${this.pathname}${this.search}${this.hash}`;
   }
 }
