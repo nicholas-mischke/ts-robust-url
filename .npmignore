@@ -1,6 +1,26 @@
 # Don't ignore dist - we need it for the published package
 !dist
 
+# Local environment / secrets
+.env
+.env.*
+.envrc
+!.env.example
+!.env.*.example
+
+# Local AI/chatbot workspace files
+.agents
+.claude
+.codex
+.cursor
+.cursorignore
+.cursorrules
+.windsurf
+.aider*
+CLAUDE.local.md
+GEMINI.local.md
+AGENTS.local.md
+
 # VSCode & MacOS
 .vscode
 tempCodeRunnerFile.*
